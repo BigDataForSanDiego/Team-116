@@ -5,7 +5,7 @@
 #### Team Name: `Nexus`    
   
 #### Your team’s hackathon idea in One sentence:
-##### `An AI-powered interface providing health support through a culturally intelligent chatbot to improve access and communication for rural and multilingual communities in healthcare.`  <-- plz update this
+##### `Our solution is to create a personalized healthcare agent utilizing ChatGPT’s Voice Assistant to increase the access to getting specialized care, reminders for appointments, and understanding cultural differences. .` 
 
 
 #### A visual
@@ -24,15 +24,15 @@
 > How can we make it more convenient for patients to provide real-time feedback about their healthcare experience through a mobile app?
 - [ ] New patient experience
 > As a potential new customer, how can we leverage the mobile app to help new patients better understand what services are available to them?
-- [X] Managing my health
+- [ ] Managing my health
 > It’s easy to get overwhelmed by all the tasks patients often have to do to maintain their health, how can we make managing health more enjoyable?
 - [ ] Addressing mental health challenges
 > Mental health challenges may be difficult to identify and have a broad impact on health, how can we help clinicians be more in tune with patients mental health needs?
 
 #### Optional Questions. `TEAMS CAN SELECT ONE ADDITIONAL OPTIONAL QUESTION (insert X in [ ])`
-- [ ] Cultural Competence in Healthcare
+- [X] Cultural Competence in Healthcare
 > How can we design a mobile app that helps healthcare providers better understand and respect cultural differences, improving communication and care for diverse patient populations?
-- [X] Access to Care for Rural and Remote Communities
+- [ ] Access to Care for Rural and Remote Communities
 > How can we leverage technology to improve healthcare access for rural and remote communities, ensuring timely and specialized care for those in underserved areas? (Focus on SDSU Imperial Valley Connection - Rural/Remote)
 - [ ] Enhancing disease prevention (For Geocomputational Thinker Awards)
 > How can big (geospatial) data analytics and AI be used to improve access to information about the influence of human behavior, cultural practices, and social interactions on the spread of diseases?
