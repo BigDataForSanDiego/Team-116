@@ -5,7 +5,7 @@
 #### Team Name: `Nexus`    
   
 #### Your team’s hackathon idea in One sentence:
-##### `Our solution is to create a personalized healthcare agent utilizing ChatGPT’s Voice Assistant to increase the access to getting specialized care, reminders for appointments, and understanding cultural differences. .` 
+##### `Our solution is to create a personalized healthcare agent utilizing ChatGPT’s Voice Assistant to increase the access to getting specialized care, reminders for appointments, and understanding cultural differences.` 
 
 
 #### A visual
