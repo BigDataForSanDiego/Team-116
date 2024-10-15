@@ -44,19 +44,108 @@ fastify.get('/', async (request, reply) => {
 
 // Route for Twilio to handle incoming and outgoing calls
 // <Say> punctuation to improve text-to-speech translation
+
+let attempts = 0;
+const patientInfo = {
+    1234: { patient_name: 'Glen', password: '1234' },
+    5678: { patient_name: 'Remington', password: '5678' }
+};
+
+
 fastify.all('/incoming-call', async (request, reply) => {
+    attempts = 0; // Reset attempts on a new call
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
-                              <Say>Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API</Say>
-                              <Pause length="1"/>
-                              <Say>O.K. you can start talking!</Say>
-                              <Connect>
-                                  <Stream url="wss://${request.headers.host}/media-stream" />
-                              </Connect>
+                              <Say>Please enter your patient ID followed by the pound key.</Say>
+                              <Gather input="dtmf" finishOnKey="#" action="/process-patient-id" method="POST">
+                                  <Pause length="3"/>
+                              </Gather>
+                              <Say>You did not enter any input. Please try again.</Say>
                           </Response>`;
 
     reply.type('text/xml').send(twimlResponse);
 });
+
+// Route to handle patient ID input
+fastify.post('/process-patient-id', async (request, reply) => {
+    const patientId = request.body.Digits;
+
+    if (patientInfo[patientId]) {
+        // If patient ID is correct, ask for password
+        const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+                              <Response>
+                                  <Say>Thank you. Now, please enter your password followed by the pound key.</Say>
+                                  <Gather input="dtmf" finishOnKey="#" action="/process-password?patientId=${patientId}" method="POST">
+                                      <Pause length="3"/>
+                                  </Gather>
+                                  <Say>You did not enter any input. Please try again.</Say>
+                              </Response>`;
+        reply.type('text/xml').send(twimlResponse);
+    } else {
+        // Retry or hang up if attempts exceed 3
+        attempts++;
+        if (attempts >= 3) {
+            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+                                  <Response>
+                                      <Say>Sorry, you have exceeded the maximum number of attempts. Goodbye.</Say>
+                                      <Hangup/>
+                                  </Response>`;
+            reply.type('text/xml').send(twimlResponse);
+        } else {
+            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+                                  <Response>
+                                      <Say>Invalid patient ID. Please try again.</Say>
+                                      <Gather input="dtmf" finishOnKey="#" action="/process-patient-id" method="POST">
+                                          <Pause length="3"/>
+                                      </Gather>
+                                      <Say>You did not enter any input. Please try again.</Say>
+                                  </Response>`;
+            reply.type('text/xml').send(twimlResponse);
+        }
+    }
+});
+
+// Route to handle password input
+fastify.post('/process-password', async (request, reply) => {
+    const { patientId } = request.query; // Get the patientId from the query parameters
+    const password = request.body.Digits;
+
+    if (patientInfo[patientId] && patientInfo[patientId].password === password) {
+        const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+                              <Response>
+                                  <Say>Thank you. ${patientInfo[patientId].patient_name}Please wait while we connect your call to the AI voice assistant.</Say>
+                                  <Pause length="1"/>
+                                  <Connect>
+                                      <Stream url="wss://${request.headers.host}/media-stream" />
+                                  </Connect>
+                              </Response>`;
+        reply.type('text/xml').send(twimlResponse);
+    } else {
+        attempts++;
+        if (attempts >= 3) {
+            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+                                  <Response>
+                                      <Say>Sorry, you have exceeded the maximum number of attempts. Goodbye.</Say>
+                                      <Hangup/>
+                                  </Response>`;
+            reply.type('text/xml').send(twimlResponse);
+        } else {
+            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+                                  <Response>
+                                      <Say>Invalid password. Please try again.</Say>
+                                      <Gather input="dtmf" finishOnKey="#" action="/process-password?patientId=${patientId}" method="POST">
+                                          <Pause length="3"/>
+                                      </Gather>
+                                      <Say>You did not enter any input. Please try again.</Say>
+                                  </Response>`;
+            reply.type('text/xml').send(twimlResponse);
+        }
+    }
+});
+
+
+
+
 
 // WebSocket route for media-stream
 fastify.register(async (fastify) => {
