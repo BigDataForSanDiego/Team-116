@@ -264,7 +264,7 @@ fastify.all('/incoming-call', async (request, reply) => {
     let attempts = 0; // Reset attempts on a new call
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
-                              <Say>Please enter your 8 digit user ID followed by the pound key.</Say>
+                              <Say>Please enter your user ID followed by the pound key.</Say>
                               <Gather input="dtmf" finishOnKey="#" action="/process-user-id" method="POST">
                                   <Pause length="3"/>
                               </Gather>
@@ -275,13 +275,24 @@ fastify.all('/incoming-call', async (request, reply) => {
 });
 
 // Route to handle user ID input
+let userIdAttempts = {};  // Use an object to track attempts for each user
+
 fastify.post('/process-user-id', async (request, reply) => {
     const userId = request.body.Digits;
-    
+
+    // Initialize or increment the user's user ID attempt count
+    if (!userIdAttempts[userId]) {
+        userIdAttempts[userId] = 0;
+    }
+    userIdAttempts[userId] += 1;
+
     // Check if user exists
     const user = await dbGet('SELECT * FROM users WHERE user_id = ?', [userId]);
 
     if (user) {
+        // Reset attempt count
+        userIdAttempts[userId] = 0;
+        
         // If user ID is correct, ask for password
         const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                               <Response>
@@ -292,20 +303,22 @@ fastify.post('/process-user-id', async (request, reply) => {
                                   <Say>You did not enter any input. Please try again.</Say>
                               </Response>`;
         reply.type('text/xml').send(twimlResponse);
+
     } else {
-        // Retry or hang up if attempts exceed 3
-        attempts++;
-        if (attempts >= 3) {
+        // Handle invalid user ID
+        if (userIdAttempts[userId] >= 3) {
             const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                                   <Response>
                                       <Say>Sorry, you have exceeded the maximum number of attempts. Goodbye.</Say>
+                                      <Pause length="1"/>
                                       <Hangup/>
                                   </Response>`;
             reply.type('text/xml').send(twimlResponse);
+            userIdAttempts[userId] = 0;  // Reset attempts after exceeding max retries
         } else {
             const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                                   <Response>
-                                      <Say>Invalid user ID. Please try again.</Say>
+                                      <Say>Please try again.</Say>
                                       <Gather input="dtmf" finishOnKey="#" action="/process-user-id" method="POST">
                                           <Pause length="3"/>
                                       </Gather>
@@ -316,43 +329,62 @@ fastify.post('/process-user-id', async (request, reply) => {
     }
 });
 
+
+
 // Route to handle password input
+let loginAttempts = {};  // Use an object to store the login attempts for each user
+
 fastify.post('/process-password', async (request, reply) => {
     const { userId } = request.query;
     const password = request.body.Digits;
 
+    // Initialize or increment the user's login attempt count
+    if (!loginAttempts[userId]) {
+        loginAttempts[userId] = 0;
+    }
+    loginAttempts[userId] += 1;
+
     const user = await verifyUser(userId, password);
 
     if (user) {
-
+        // Reset the attempt count if login is successful
+        loginAttempts[userId] = 0;
         globalUser = user;
+
+        // Get last call information (including last call summary)
+        const lastCallInfo = await getLastCallInfo();
 
         // If authentication is successful, connect to the AI assistant
         const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                               <Response>
-                                  <Say>Login successful. Welcome ${user.name}. Please wait while we connect your call to the AI voice assistant.</Say>
+                                  <Say>Login successful. ${lastCallInfo.firstMessage}</Say>
                                   <Pause length="1"/>
                                   <Connect>
                                       <Stream url="wss://${request.headers.host}/media-stream">
-                                          <Parameter name="firstMessage" value="Welcome back ${user.name}. I see your last visit was on ${user.last_visit}. How can I assist you today?" />
+                                          <Parameter name="firstMessage" value="${lastCallInfo.firstMessage}" />
                                           <Parameter name="callerNumber" value="${user.phone_number}" />
                                       </Stream>
                                   </Connect>
                               </Response>`;
         reply.type('text/xml').send(twimlResponse);
+
     } else {
-        attempts++;
-        if (attempts >= 3) {
+        // Handle invalid password
+        if (loginAttempts[userId] >= 3) {
+            // If exceeded max attempts
             const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                                   <Response>
                                       <Say>Sorry, you have exceeded the maximum number of attempts. Goodbye.</Say>
+                                          <Pause length="1"/>
                                       <Hangup/>
                                   </Response>`;
             reply.type('text/xml').send(twimlResponse);
+            loginAttempts[userId] = 0;  // Reset attempts after exceeding max retries
         } else {
+            // Allow the user to retry with an invalid password message
             const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                                   <Response>
-                                      <Say>Invalid password. Please try again.</Say>
+                                      <Say>Please try again.</Say>
                                       <Gather input="dtmf" finishOnKey="#" action="/process-password?userId=${userId}" method="POST">
                                           <Pause length="3"/>
                                       </Gather>
