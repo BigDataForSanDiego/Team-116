@@ -1,7 +1,7 @@
 import express from "express";
 import db, {
-    dbRun,
     dbAll,
+    dbRun,
     initializeDatabase,
     populateDatabase,
     gracefulShutdown,
@@ -26,8 +26,24 @@ app.get("/appointments/:user_id", async (req, res) => {
     }
 });
 
-// 2. Set a new appointment for a specific user
+// 2. Get all medical history for a specific user by user_id
+app.get("/medical-history/:user_id", async (req, res) => {
+    try {
+        const userId = req.params.user_id;
+        const medicalHistory = await dbAll(
+            "SELECT * FROM medical_history WHERE user_id = ?",
+            [userId]
+        );
+        res.json(medicalHistory);
+    } catch (err) {
+        console.error("Error creating appointment:", err); // Log the error
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 3. Set a new appointment for a specific user
 app.post("/appointments", async (req, res) => {
+    console.log("Request received at /appointments:", req.body); // Log to confirm request
     const { user_id, doctor, date, reason, status } = req.body;
 
     try {
@@ -41,7 +57,7 @@ app.post("/appointments", async (req, res) => {
     }
 });
 
-// 3. Cancel an appointment by setting its status to 'Canceled'
+// 4. Cancel an appointment by setting its status to 'Canceled'
 app.put("/appointments/cancel/:appointment_id", async (req, res) => {
     const appointmentId = req.params.appointment_id;
 
@@ -56,37 +72,6 @@ app.put("/appointments/cancel/:appointment_id", async (req, res) => {
         } else {
             res.status(404).send("Appointment not found");
         }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// 4. Reschedule an appointment by updating the date and/or time
-app.put("/appointments/reschedule/:appointment_id", async (req, res) => {
-    const appointmentId = req.params.appointment_id;
-    const { new_date } = req.body;
-
-    try {
-        const result = await dbRun(
-            "UPDATE appointments SET date = ? WHERE id = ?",
-            [new_date, appointmentId]
-        );
-
-        if (result.changes > 0) {
-            res.send("Appointment rescheduled");
-        } else {
-            res.status(404).send("Appointment not found");
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Add more endpoints as needed...
-app.get("/users", async (req, res) => {
-    try {
-        const users = await dbAll("SELECT * FROM users");
-        res.json(users);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

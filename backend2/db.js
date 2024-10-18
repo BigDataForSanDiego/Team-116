@@ -28,6 +28,7 @@ export const dbAll = (sql, params = []) =>
     });
 
 // Initialize database with medical-related tables
+// Initialize database with medical-related tables
 export async function initializeDatabase() {
     // Ensure the users table exists
     await dbRun(`
@@ -46,6 +47,19 @@ export async function initializeDatabase() {
         )
     `);
 
+    // Create the medical_history table
+    await dbRun(`
+        CREATE TABLE IF NOT EXISTS medical_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            date DATE,
+            type TEXT,
+            description TEXT,
+            doctor TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    `);
+
     await dbRun(`
         CREATE TABLE IF NOT EXISTS appointments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +73,8 @@ export async function initializeDatabase() {
     `);
 }
 
+// Populate database with sample data
+// Populate database with sample data
 // Populate database with sample data
 export async function populateDatabase() {
     const sampleUsers = [
@@ -88,30 +104,100 @@ export async function populateDatabase() {
         },
     ];
 
+    const sampleMedicalHistory = [
+        {
+            phone_number: "+1234567890",
+            date: "2024-03-15",
+            type: "Check-up",
+            description:
+                "Regular blood pressure check. BP: 125/82. Prescribed medication refill.",
+            doctor: "Dr. Smith",
+        },
+        {
+            phone_number: "+1234567890",
+            date: "2024-02-01",
+            type: "Urgent Care",
+            description:
+                "Acute asthma exacerbation. Administered nebulizer treatment.",
+            doctor: "Dr. Johnson",
+        },
+        {
+            phone_number: "+1234567891",
+            date: "2024-03-10",
+            type: "Check-up",
+            description:
+                "Routine check-up. All vitals normal. No concerns raised.",
+            doctor: "Dr. Johnson",
+        },
+    ];
+
+    // Insert sample users only if they do not already exist
     for (const user of sampleUsers) {
         try {
-            await dbRun(
-                `INSERT OR IGNORE INTO users (user_id, password, phone_number, name, date_of_birth, allergies, conditions, medications, last_visit, primary_doctor)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    user.user_id,
-                    user.password,
-                    user.phone_number,
-                    user.name,
-                    user.date_of_birth,
-                    user.allergies,
-                    user.conditions,
-                    user.medications,
-                    user.last_visit,
-                    user.primary_doctor,
-                ]
+            const existingUser = await dbGet(
+                "SELECT id FROM users WHERE user_id = ?",
+                [user.user_id]
             );
+            if (!existingUser) {
+                await dbRun(
+                    `INSERT INTO users (user_id, password, phone_number, name, date_of_birth, allergies, conditions, medications, last_visit, primary_doctor)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        user.user_id,
+                        user.password,
+                        user.phone_number,
+                        user.name,
+                        user.date_of_birth,
+                        user.allergies,
+                        user.conditions,
+                        user.medications,
+                        user.last_visit,
+                        user.primary_doctor,
+                    ]
+                );
+                console.log(`User ${user.name} added to the database.`);
+            }
         } catch (err) {
             console.error("Error inserting user:", err);
         }
     }
 
-    console.log("Sample data has been populated in the database");
+    // Insert sample medical history only if it doesn't already exist
+    for (const history of sampleMedicalHistory) {
+        try {
+            // Get the user_id of the user based on their phone_number
+            const user = await dbGet(
+                "SELECT id FROM users WHERE phone_number = ?",
+                [history.phone_number]
+            );
+            if (user) {
+                const existingHistory = await dbGet(
+                    "SELECT id FROM medical_history WHERE user_id = ? AND date = ? AND type = ?",
+                    [user.id, history.date, history.type]
+                );
+                if (!existingHistory) {
+                    await dbRun(
+                        `INSERT INTO medical_history (user_id, date, type, description, doctor)
+                         VALUES (?, ?, ?, ?, ?)`,
+                        [
+                            user.id,
+                            history.date,
+                            history.type,
+                            history.description,
+                            history.doctor,
+                        ]
+                    );
+                    console.log(
+                        `Medical history added for user with phone: ${history.phone_number}.`
+                    );
+                }
+            }
+        } catch (err) {
+            console.error("Error inserting medical history:", err);
+        }
+    }
+
+    console.log("Sample data population completed.");
 }
 
 // Graceful shutdown: Close the database connection when the app closes
