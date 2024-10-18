@@ -8,6 +8,9 @@ import fastifyWs from "@fastify/websocket"; // Fastify plugin for WebSocket supp
 import fetch from "node-fetch"; // Module to make HTTP requests
 import sqlite3 from "sqlite3";
 
+import axios from "axios";
+
+
 // Load environment variables from .env file
 dotenv.config(); // Reads .env file and makes its variables available
 
@@ -19,6 +22,7 @@ const db = new sqlite3.Database("./sqlite3.db");
 
 // Define global user
 var globalUser = null;
+var globalCallerNumber = null;
 
 // Check if the API key is missing
 if (!OPENAI_API_KEY) {
@@ -34,40 +38,27 @@ fastify.register(fastifyWs); // Register WebSocket support for real-time communi
 // System message template for the AI assistant's behavior and persona
 const SYSTEM_MESSAGE = `
 ### Role
-You are an AI medical assistant named Dr. AI, working at City Medical Center. Your role is to assist patients with their medical queries, schedule appointments, and relay messages to doctors.
+You are an AI medical assistant named Evie, working at Sharp Healthcare. Your role is to assist patients with their medical queries, schedule appointments, and relay messages to doctors.
+
+### Authentication Flow
+1. Greet the caller and ask for their date of birth
+2. Wait for verification before proceeding with any medical assistance
+3. If authentication fails, politely inform the caller and end the conversation
 
 ### Persona
-- You are a knowledgeable medical assistant with access to patient records
-- Your tone is professional, caring, and clear
-- You maintain patient confidentiality and privacy
-- You are careful to note that you cannot provide emergency medical care
-- You refer urgent matters to emergency services
-
-
-### Conversation Guidelines
-- Always verify the patient's identity before discussing medical information
-- Provide general medical information but avoid definitive diagnoses
-- Direct emergencies to call 911 or visit the nearest emergency room
+- Professional and caring tone
+- Maintain patient confidentiality
+- Direct emergencies to 911 or nearest emergency room
 - Keep conversations focused on medical matters
-- Maintain professional boundaries
-
-### First Message
-The first message you receive from the patient is their name and a summary of their last visit, repeat this exact message to the patient as the greeting.
 
 ### Medical Advice Limitations
-- You can provide general health information and reminder about medications
-- You cannot diagnose conditions or change prescribed treatments
+- Provide general health information only
+- Cannot diagnose conditions or change prescribed treatments
 - Always recommend consulting a doctor for specific medical concerns
-
-### Functions
-Use these functions to assist patients:
-- get_medical_history: Retrieve patient's medical history
-- schedule_appointment: Book an appointment with a doctor
-- send_doctor_email: Send a message to the patient's doctor
 `;
 
 // Some default constants used throughout the application
-const VOICE = "alloy"; // The voice for AI responses
+const VOICE = "shimmer"; // The voice for AI responses
 const PORT = process.env.PORT || 5050; // Set the port for the server (from environment or default to 5050)
 
 // DB helper functions
@@ -95,17 +86,107 @@ const dbAll = (sql, params) =>
         });
     });
 
-// Database helper functions
-async function verifyUser(userId, password) {
+async function formatDateOfBirth(date_of_birth) {
+    const prompt = `Convert the following date of birth to the format YYYY-MM-DD: "${date_of_birth}"`;
+    
     try {
-        const user = await dbGet(
-            "SELECT * FROM users WHERE user_id = ? AND password = ?",
-            [userId, password]
+        const response = await axios.post(
+            'https://api.openai.com/v1/completions',
+            {
+                model: "gpt-4o-mini",  // OpenAI 4o mini model
+                prompt: prompt,
+                max_tokens: 10, // We only need a small response with the date
+                temperature: 0  // We want a deterministic result
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
         );
-        return user || null;
+        const formattedDate = response.data.choices[0].text.trim();
+        return formattedDate;
+    } catch (error) {
+        console.error("Error formatting date:", error);
+        throw new Error("Could not format date");
+    }
+}
+    
+
+// Database helper functions
+async function verifyUser(date_of_birth) {
+    try {
+        console.log(`Received date of birth: ${date_of_birth}`);
+        console.log(globalCallerNumber);
+
+        // First, find the user by phone number
+        const user = await dbGet(
+            "SELECT * FROM users WHERE phone_number = ?",
+            [globalCallerNumber]
+        );
+        
+        if (!user) {
+            return { exists: false };
+        }
+
+        // If date_of_birth exists, format and verify it
+        if (date_of_birth) {
+            const formattedDOB = await formatDateOfBirth(date_of_birth);
+            console.log(`Formatted date of birth: ${formattedDOB}`);
+
+            // Verify against the database value
+            return user.date_of_birth === formattedDOB
+                ? { exists: true, verified: true, user }
+                : { exists: true, verified: false };
+        }
+
+        return { exists: false, verified: false };
     } catch (error) {
         console.error("Error verifying user:", error);
-        return null;
+        return { exists: false, error: true };
+    }
+}
+
+async function authenticateUser(date_of_birth) {
+    try {
+        const result = await verifyUser(date_of_birth);
+        
+        if (result.error) {
+            return {
+                message: "System error during authentication",
+                authenticated: false,
+                error: true
+            };
+        }
+
+        if (!result.exists) {
+            return {
+                message: "Phone number not found in our records",
+                authenticated: false
+            };
+        }
+
+        if (result.verified) {
+            globalUser = result.user;
+            return {
+                message: "Authentication successful",
+                authenticated: true,
+                user: result.user
+            };
+        }
+
+        return {
+            message: "Failed to authenticate user",
+            authenticated: false,
+        };
+    } catch (error) {
+        console.error("Error in authentication:", error);
+        return {
+            message: "Authentication error",
+            authenticated: false,
+            error: true
+        };
     }
 }
 
@@ -127,7 +208,7 @@ async function getMedicalHistory() {
             message: JSON.stringify({
                 patient: {
                     name: globalUser.name,
-                    dob: globalUser.date_of_birth,
+                    date_of_birth: globalUser.date_of_birth,
                     allergies: globalUser.allergies,
                     conditions: globalUser.conditions,
                     medications: globalUser.medications,
@@ -209,37 +290,6 @@ async function saveTranscript(userId, transcript) {
     }
 }
 
-async function getLastCallInfo() {
-    try {
-        if (!globalUser) {
-            return {
-                firstMessage:
-                    "Welcome to City Medical Center. I don't seem to have your records. How can I assist you today?",
-            };
-        }
-
-        // Fetch the most recent call transcript
-        const lastCall = await dbGet(
-            "SELECT transcript FROM calls WHERE user_id = ? ORDER BY date DESC LIMIT 1",
-            [globalUser.id]
-        );
-
-        const lastVisitSummary = lastCall
-            ? `I see your last call summary: "${lastCall.transcript}". How can I assist you today?`
-            : `I see your last visit was on ${globalUser.last_visit}. How can I assist you today?`;
-
-        return {
-            firstMessage: `Welcome back ${globalUser.name}. ${lastVisitSummary}`,
-        };
-    } catch (error) {
-        console.error("Error getting last call info:", error);
-        return {
-            firstMessage:
-                "Welcome to City Medical Center. How can I assist you today?",
-        };
-    }
-}
-
 // Session management: Store session data for ongoing calls
 const sessions = new Map(); // A Map to hold session data for each call
 
@@ -263,135 +313,23 @@ fastify.get("/", async (request, reply) => {
 
 // Handle incoming calls from Twilio
 fastify.all("/incoming-call", async (request, reply) => {
-    let attempts = 0; // Reset attempts on a new call
-    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                          <Response>
-                              <Say>Please enter your user ID followed by the pound key.</Say>
-                              <Gather input="dtmf" finishOnKey="#" action="/process-user-id" method="POST">
-                                  <Pause length="3"/>
-                              </Gather>
-                              <Say>Please try again.</Say>
-                          </Response>`;
+    globalCallerNumber = request.body.From;
 
+    // Store callerNumber in session
+    const sessionId = `session_${Date.now()}`;
+    sessions.set(sessionId, { transcript: "", streamSid: null });
+
+    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Connect>
+                <Stream url="wss://${request.headers.host}/media-stream?sessionId=${sessionId}">
+                </Stream>
+            </Connect>
+        </Response>`;
+    
     reply.type("text/xml").send(twimlResponse);
 });
 
-// Route to handle user ID input
-let userIdAttempts = {}; // Use an object to track attempts for each user
-
-fastify.post("/process-user-id", async (request, reply) => {
-    const userId = request.body.Digits;
-
-    // Initialize or increment the user's user ID attempt count
-    if (!userIdAttempts[userId]) {
-        userIdAttempts[userId] = 0;
-    }
-    userIdAttempts[userId] += 1;
-
-    // Check if user exists
-    const user = await dbGet("SELECT * FROM users WHERE user_id = ?", [userId]);
-
-    if (user) {
-        // Reset attempt count
-        userIdAttempts[userId] = 0;
-
-        // If user ID is correct, ask for password
-        const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                              <Response>
-                                  <Say>Thank you. Now, please enter your 6 digit password followed by the pound key.</Say>
-                                  <Gather input="dtmf" finishOnKey="#" action="/process-password?userId=${userId}" method="POST">
-                                      <Pause length="3"/>
-                                  </Gather>
-                                  <Say>You did not enter any input. Please try again.</Say>
-                              </Response>`;
-        reply.type("text/xml").send(twimlResponse);
-    } else {
-        // Handle invalid user ID
-        if (userIdAttempts[userId] >= 3) {
-            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                                  <Response>
-                                      <Say>Sorry, you have exceeded the maximum number of attempts. Goodbye.</Say>
-                                      <Pause length="1"/>
-                                      <Hangup/>
-                                  </Response>`;
-            reply.type("text/xml").send(twimlResponse);
-            userIdAttempts[userId] = 0; // Reset attempts after exceeding max retries
-        } else {
-            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                                  <Response>
-                                      <Say>Please try again.</Say>
-                                      <Gather input="dtmf" finishOnKey="#" action="/process-user-id" method="POST">
-                                          <Pause length="3"/>
-                                      </Gather>
-                                      <Say>You did not enter any input. Please try again.</Say>
-                                  </Response>`;
-            reply.type("text/xml").send(twimlResponse);
-        }
-    }
-});
-
-// Route to handle password input
-let loginAttempts = {}; // Use an object to store the login attempts for each user
-
-fastify.post("/process-password", async (request, reply) => {
-    const { userId } = request.query;
-    const password = request.body.Digits;
-
-    // Initialize or increment the user's login attempt count
-    if (!loginAttempts[userId]) {
-        loginAttempts[userId] = 0;
-    }
-    loginAttempts[userId] += 1;
-
-    const user = await verifyUser(userId, password);
-
-    if (user) {
-        // Reset the attempt count if login is successful
-        loginAttempts[userId] = 0;
-        globalUser = user;
-
-        // Get last call information (including last call summary)
-        const lastCallInfo = await getLastCallInfo();
-
-        // If authentication is successful, connect to the AI assistant
-        const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                              <Response>
-                                  <Say>Login successful. ${lastCallInfo.firstMessage}</Say>
-                                  <Pause length="1"/>
-                                  <Connect>
-                                      <Stream url="wss://${request.headers.host}/media-stream">
-                                          <Parameter name="firstMessage" value="${lastCallInfo.firstMessage}" />
-                                          <Parameter name="callerNumber" value="${user.phone_number}" />
-                                      </Stream>
-                                  </Connect>
-                              </Response>`;
-        reply.type("text/xml").send(twimlResponse);
-    } else {
-        // Handle invalid password
-        if (loginAttempts[userId] >= 3) {
-            // If exceeded max attempts
-            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                                  <Response>
-                                      <Say>Sorry, you have exceeded the maximum number of attempts. Goodbye.</Say>
-                                          <Pause length="1"/>
-                                      <Hangup/>
-                                  </Response>`;
-            reply.type("text/xml").send(twimlResponse);
-            loginAttempts[userId] = 0; // Reset attempts after exceeding max retries
-        } else {
-            // Allow the user to retry with an invalid password message
-            const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                                  <Response>
-                                      <Say>Please try again.</Say>
-                                      <Gather input="dtmf" finishOnKey="#" action="/process-password?userId=${userId}" method="POST">
-                                          <Pause length="3"/>
-                                      </Gather>
-                                      <Say>Please try again.</Say>
-                                  </Response>`;
-            reply.type("text/xml").send(twimlResponse);
-        }
-    }
-});
 
 // WebSocket route to handle the media stream for real-time interaction
 fastify.register(async (fastify) => {
@@ -413,10 +351,6 @@ fastify.register(async (fastify) => {
         }; // Get the session data or create a new session
         sessions.set(sessionId, session); // Update the session Map
 
-        // Retrieve the caller number from the session
-        const callerNumber = session.callerNumber;
-        console.log("Caller Number:", callerNumber);
-
         // Open a WebSocket connection to the OpenAI Realtime API
         const openAiWs = new WebSocket(
             "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01",
@@ -433,7 +367,12 @@ fastify.register(async (fastify) => {
             const sessionUpdate = {
                 type: "session.update",
                 session: {
-                    turn_detection: { type: "server_vad" }, // Enable voice activity detection
+                    turn_detection: {
+                        "type": "server_vad",
+                        "threshold": .9,  // Lower threshold for more lenient VAD
+                        "prefix_padding_ms": 500,  // Increase padding to account for initial silence
+                        "silence_duration_ms": 1000  // Increase silence duration before cutting off
+                    }, // Enable voice activity detection
                     input_audio_format: "g711_ulaw", // Audio format for input
                     output_audio_format: "g711_ulaw", // Audio format for output
                     voice: VOICE, // Use the defined voice for AI responses
@@ -444,6 +383,19 @@ fastify.register(async (fastify) => {
                         "model": "whisper-1", // Use the Whisper model for transcribing audio
                     },
                     tools: [
+                        {
+                            type: "function",
+                            name: "authenticate_user",
+                            description: "Authenticate user based on date of birth",
+                            parameters: {
+                                type: "object",
+                                properties: {
+                                    phoneNumber: { type: "string" },
+                                    date_of_birth: { type: "string", description: "Date of birth (Month, Day and Year)" }
+                                },
+                                required: ["date_of_birth"]
+                            }
+                        },
                         {
                             type: "function",
                             name: "get_medical_history",
@@ -521,42 +473,26 @@ fastify.register(async (fastify) => {
         // Handle messages from Twilio (media stream) and send them to OpenAI
         connection.on("message", (message) => {
             try {
-                const data = JSON.parse(message); // Parse the incoming message from Twilio
+                const data = JSON.parse(message);
 
                 if (data.event === "start") {
-                    // When the call starts
-                    streamSid = data.start.streamSid; // Get the stream ID
-                    const callSid = data.start.callSid; // Get the call SID
-                    const customParameters = data.start.customParameters; // Get custom parameters (firstMessage, callerNumber)
+                    streamSid = data.start.streamSid;
+                    const customParameters = data.start.customParameters;
 
-                    console.log("CallSid:", callSid);
-                    console.log("StreamSid:", streamSid);
-                    console.log("Custom Parameters:", customParameters);
-
-                    // Capture callerNumber and firstMessage from custom parameters
-                    const callerNumber =
-                        customParameters?.callerNumber || "Unknown";
-                    session.callerNumber = callerNumber; // Store the caller number in the session
-                    firstMessage =
-                        customParameters?.firstMessage ||
-                        "Hello, how can I assist you?"; // Set the first message
-                    console.log("First Message:", firstMessage);
-                    console.log("Caller Number:", callerNumber);
-
-                    // Prepare the first message, but don't send it until the OpenAI connection is ready
+                    // Automatically trigger authentication with phone number
                     queuedFirstMessage = {
                         type: "conversation.item.create",
                         item: {
-                            type: "message",
-                            role: "user",
-                            content: [
-                                { type: "input_text", text: firstMessage },
-                            ],
-                        },
+                            type: "function_call",
+                            function: {
+                                name: "authenticate_user",
+                                arguments: JSON.stringify({})
+                            }
+                        }
                     };
 
                     if (openAiWsReady) {
-                        sendFirstMessage(); // Send the first message if OpenAI is ready
+                        sendFirstMessage();
                     }
                 } else if (data.event === "media") {
                     // When media (audio) is received
@@ -570,12 +506,7 @@ fastify.register(async (fastify) => {
                     }
                 }
             } catch (error) {
-                console.error(
-                    "Error parsing message:",
-                    error,
-                    "Message:",
-                    message
-                ); // Log any errors during message parsing
+                console.error("Error parsing message:", error, "Message:", message);
             }
         });
 
@@ -631,6 +562,10 @@ fastify.register(async (fastify) => {
                                     args.content
                                 );
                                 break;
+                            case "authenticate_user":
+                                result = await authenticateUser(
+                                    args.date_of_birth
+                                )
                         }
 
                         // Send function output back to OpenAI
@@ -665,17 +600,6 @@ fastify.register(async (fastify) => {
                         )?.transcript || "Agent message not found";
                     session.transcript += `Agent: ${agentMessage}\n`; // Add agent's message to the transcript
                     console.log(`Agent (${sessionId}): ${agentMessage}`);
-                }
-
-                // Log user transcription (input_audio_transcription.completed)
-                if (
-                    response.type ===
-                        "conversation.item.input_audio_transcription.completed" &&
-                    response.transcript
-                ) {
-                    const userMessage = response.transcript.trim(); // Get the user's transcribed message
-                    session.transcript += `User: ${userMessage}\n`; // Add the user's message to the transcript
-                    console.log(`User (${sessionId}): ${userMessage}`);
                 }
 
                 // Log other relevant events
