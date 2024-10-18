@@ -41,41 +41,8 @@ app.get("/medical-history/:user_id", async (req, res) => {
     }
 });
 
-// 3. Set a new appointment for a specific user
-app.post("/appointments", async (req, res) => {
-    console.log("Request received at /appointments:", req.body); // Log to confirm request
-    const { user_id, doctor, date, reason, status } = req.body;
 
-    try {
-        await dbRun(
-            `INSERT INTO appointments (user_id, doctor, date, reason, status) VALUES (?, ?, ?, ?, ?)`,
-            [user_id, doctor, date, reason, status || "Scheduled"]
-        );
-        res.status(201).send("Appointment created");
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
-// 4. Cancel an appointment by setting its status to 'Canceled'
-app.put("/appointments/cancel/:appointment_id", async (req, res) => {
-    const appointmentId = req.params.appointment_id;
-
-    try {
-        const result = await dbRun(
-            "UPDATE appointments SET status = ? WHERE id = ?",
-            ["Canceled", appointmentId]
-        );
-
-        if (result.changes > 0) {
-            res.send("Appointment canceled");
-        } else {
-            res.status(404).send("Appointment not found");
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
 // Start the server
 const PORT = process.env.PORT || 3000;
