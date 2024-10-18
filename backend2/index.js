@@ -353,6 +353,15 @@ fastify.register(async (fastify) => {
                     input_audio_transcription: {
                         "model": "whisper-1", // Use the Whisper model for transcribing audio
                     },
+                    speech: {
+                        voice: "shimmer", // Select a natural-sounding, casual yet professional voice
+                        rate: 1.2, // Increase the speaking rate to sound faster
+                        pitch: 1.0, // Adjust pitch to make it sound more natural
+                        prosody: {
+                            volume: "medium", // Adjust prosody settings for more naturalness
+                            rate: "medium-fast", // Makes speech faster
+                            contour: "(0%,+0)(10%,+10)(40%,+0)", // Adjust the speech contour for a more engaging tone
+                        },},
                     tools: [
                         {
                             type: "function",
