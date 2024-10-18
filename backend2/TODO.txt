@@ -1,0 +1,6 @@
+Change login to autodetect phone # and use date of birth
+Make voice faster/work better
+Add extra rows to db (extra user data)
+Add function call so ai can see all available appointments (hours 8am to 5pm)
+Add any other function calls that may be necessary
+Work on prompt engineering 
