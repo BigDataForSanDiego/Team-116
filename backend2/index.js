@@ -7,9 +7,7 @@ import fastifyFormBody from "@fastify/formbody"; // Fastify plugin for parsing f
 import fastifyWs from "@fastify/websocket"; // Fastify plugin for WebSocket support
 import fetch from "node-fetch"; // Module to make HTTP requests
 import sqlite3 from "sqlite3";
-
-import axios from "axios";
-
+import moment from "moment";
 
 // Load environment variables from .env file
 dotenv.config(); // Reads .env file and makes its variables available
@@ -85,33 +83,6 @@ const dbAll = (sql, params) =>
             else resolve(rows);
         });
     });
-
-async function formatDateOfBirth(date_of_birth) {
-    const prompt = `Convert the following date of birth to the format YYYY-MM-DD: "${date_of_birth}"`;
-    
-    try {
-        const response = await axios.post(
-            'https://api.openai.com/v1/completions',
-            {
-                model: "gpt-4o-mini",  // OpenAI 4o mini model
-                prompt: prompt,
-                max_tokens: 10, // We only need a small response with the date
-                temperature: 0  // We want a deterministic result
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-        const formattedDate = response.data.choices[0].text.trim();
-        return formattedDate;
-    } catch (error) {
-        console.error("Error formatting date:", error);
-        throw new Error("Could not format date");
-    }
-}
     
 
 // Database helper functions
@@ -132,8 +103,8 @@ async function verifyUser(date_of_birth) {
 
         // If date_of_birth exists, format and verify it
         if (date_of_birth) {
-            const formattedDOB = await formatDateOfBirth(date_of_birth);
-            console.log(`Formatted date of birth: ${formattedDOB}`);
+            const formattedDOB = await moment(new Date(date_of_birth)).format('YYYY-MM-DD');
+            console.log(`global: (${user.date_of_birth}), said: (${formattedDOB})`)
 
             // Verify against the database value
             return user.date_of_birth === formattedDOB

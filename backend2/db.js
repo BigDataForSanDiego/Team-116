@@ -107,7 +107,7 @@ export async function populateDatabase() {
             password: "password235",
             phone_number: "+16196353351",
             name: "Remington Steele",
-            date_of_birth: "2004-7-28",
+            date_of_birth: "2004-07-28",
             allergies: "Chocolate",
             conditions: "Asthma",
             medications: "Retinol",
