@@ -1,12 +1,12 @@
 ### 2025 BIG DATA HACKATHON PROPOSAL FORM
 
-#### Team Number: `YOUR TEAM NUMBER HERE`  
+#### Team Number: Team 116  
 
-#### Team Name: `YOUR TEAM NAME HERE`    
+#### Team Name: Safe Streets   
 
-#### Team Coordinator GitHub Username: `YOUR TEAM COORDINATOR GITHUB USERNAME HERE`
+#### Team Coordinator GitHub Username: daniabawab
 
-#### Team Members `YOUR TEAM MEMBERS NAME & GITHUB USERNAME HERE`
+#### Team Members Dania Bawab, Rachel Hamaker, Maddie McDowell, Nhan Le
 
 #### Your teamâ€™s hackathon idea in One sentence:
 ##### `YOUR ONE SENTENCE HERE`
