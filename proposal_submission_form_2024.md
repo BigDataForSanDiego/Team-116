@@ -12,10 +12,7 @@
 ##### A centralized web platform that connects individuals experiencing homelessness with essential services—including shelter, food, healthcare, employment resources, and real-time support—through an accessible, and user-friendly interface.
 
 #### A visual
-![bigdatahackathon4sd](https://github.com/BigDataForSanDiego/bigdataforsandiego.github.io/blob/main/images/big_data_2025_clip.png?raw=true "Big Data Hackathon for San Diego 2025")
-
-<img height="10%" width="50%" alt="HDMA" src="https://github.com/BigDataForSanDiego/bigdataforsandiego.github.io/blob/main/templates/img/hdma2.png?raw=true"> 
-
+<img width="500" height="500" alt="HB" src="https://github.com/user-attachments/assets/81655d78-441b-47c0-85b1-536bfefbcc1e" />
 
 #### Hackathon Five CORE Themes. `CHECK ONE or TWO QUESTIONS (insert X in [ ])`.
 - [X] Access to Shelter and Resources
