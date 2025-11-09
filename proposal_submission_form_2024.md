@@ -8,7 +8,7 @@
 
 #### Team Members Dania Bawab, Rachel Hamaker, Maddie McDowell, Nhan Le
 
-#### Your teamâ€™s hackathon idea in One sentence:
+#### Your teams hackathon idea in One sentence:
 ##### A centralized web platform that connects individuals experiencing homelessness with essential services—including shelter, food, healthcare, employment resources, and real-time support—through an accessible, and user-friendly interface.
 
 #### A visual
